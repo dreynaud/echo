@@ -69,7 +69,7 @@ class MissedPipelineTriggerCompensationJobSpec extends Specification {
     dateContext.getClock() >> Clock.system(ZoneId.of('America/Los_Angeles'))
 
     def compensationJob = new MissedPipelineTriggerCompensationJob(scheduler, pipelineCache, orcaService,
-      pipelineInitiator, registry, /* not used */ 30000, 2000, /* not used */ 'America/Los_Angeles', true, 900000, 20, dateContext)
+      pipelineInitiator, registry, /* not used */ 30000, 2000, /* not used */ 'America/Los_Angeles', false, 900000, 20, dateContext)
 
     when:
     compensationJob.triggerMissedExecutions(pipelines)
@@ -103,7 +103,7 @@ class MissedPipelineTriggerCompensationJobSpec extends Specification {
 
     and:
     def compensationJob = new MissedPipelineTriggerCompensationJob(scheduler, pipelineCache, orcaService,
-      pipelineInitiator, registry, 30000L, 2000L, 'America/Los_Angeles', true, 900000, 20)
+      pipelineInitiator, registry, 30000L, 2000L, 'America/Los_Angeles', false, 900000, 20)
 
     when:
     compensationJob.triggerMissedExecutions(pipelines)
@@ -154,7 +154,7 @@ class MissedPipelineTriggerCompensationJobSpec extends Specification {
 
     def dateContext = Mock(MissedPipelineTriggerCompensationJob.DateContext)
     def compensationJob = new MissedPipelineTriggerCompensationJob(scheduler, pipelineCache, orcaService,
-      pipelineInitiator, registry, 30000L, 2000L, 'America/Los_Angeles', true, 900000, 20, dateContext)
+      pipelineInitiator, registry, 30000L, 2000L, 'America/Los_Angeles', false, 900000, 20, dateContext)
 
     when:
     def result = compensationJob.missedExecution(expr, lastExecution, windowFloor, now)
@@ -206,7 +206,7 @@ class MissedPipelineTriggerCompensationJobSpec extends Specification {
 
     def dateContext = Mock(MissedPipelineTriggerCompensationJob.DateContext)
     def compensationJob = new MissedPipelineTriggerCompensationJob(scheduler, pipelineCache, orcaService,
-      pipelineInitiator, registry, 30000L, 2000L, 'America/Los_Angeles', true, 900000, 20, dateContext)
+      pipelineInitiator, registry, 30000L, 2000L, 'America/Los_Angeles', false, 900000, 20, dateContext)
 
     when:
     def missedExecution = compensationJob.missedExecution(expr, lastExecution, windowFloor, now)
@@ -217,7 +217,7 @@ class MissedPipelineTriggerCompensationJobSpec extends Specification {
 
   def 'verify that the present is a fleeting moment, the past is no more'() {
     def compensationJob = new MissedPipelineTriggerCompensationJob(scheduler, pipelineCache, orcaService,
-      pipelineInitiator, registry, 30000L, 2000L, 'America/Los_Angeles', true, 900000, 20)
+      pipelineInitiator, registry, 30000L, 2000L, 'America/Los_Angeles', false, 900000, 20)
 
     def sleepyTimeMs = 100
 
@@ -238,5 +238,47 @@ class MissedPipelineTriggerCompensationJobSpec extends Specification {
   Date getDateOffset(int minutesOffset) {
     def clock = Clock.systemDefaultZone()
     Date.from(Instant.now(clock).truncatedTo(ChronoUnit.HOURS).plusMillis(TimeUnit.MINUTES.toMillis(minutesOffset)))
+  }
+
+  @Unroll
+  def 'verify invalid configuration throws'() {
+    when:
+    new MissedPipelineTriggerCompensationJob(scheduler, pipelineCache, orcaService, pipelineInitiator, registry,
+      compensationWindowMs, compensationWindowToleranceMs, 'America/Los_Angeles', enableRecurring, recurringPollIntervalMs, 20)
+
+    then:
+    IllegalArgumentException e = thrown()
+
+    where:
+    compensationWindowMs | compensationWindowToleranceMs | enableRecurring | recurringPollIntervalMs
+    // test for gaps in coverage
+    30                   | 10                            | true            | 60
+    59                   | 10                            | true            | 60
+
+    // test for oversize tolerance
+    90                   | 31                            | true            | 60
+    90                   | 40                            | true            | 60
+  }
+
+  @Unroll
+  def 'verify valid configuration does not throw'() {
+    when:
+    new MissedPipelineTriggerCompensationJob(scheduler, pipelineCache, orcaService, pipelineInitiator, registry,
+      compensationWindowMs, compensationWindowToleranceMs, 'America/Los_Angeles', enableRecurring, recurringPollIntervalMs, 20)
+
+    then:
+    notThrown(IllegalArgumentException)
+
+    where:
+    compensationWindowMs | compensationWindowToleranceMs | enableRecurring | recurringPollIntervalMs
+    // test for gaps in coverage
+    60                   | 10                            | true            | 60
+    70                   | 10                            | true            | 60
+    30                   | 10                            | false           | 60
+
+    // test for oversize tolerance
+    90                   | 30                            | true            | 60
+    90                   | 10                            | true            | 60
+    90                   | 40                            | false           | 60
   }
 }

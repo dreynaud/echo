@@ -16,6 +16,7 @@
 
 package com.netflix.spinnaker.echo.scheduler.actions.pipeline.impl
 
+
 import com.google.common.collect.Lists
 import com.netflix.scheduledactions.triggers.CronExpressionFuzzer
 import com.netflix.spectator.api.Registry
@@ -47,6 +48,7 @@ import java.util.concurrent.TimeUnit
 
 import static com.netflix.spinnaker.echo.model.Trigger.Type.CRON
 import static net.logstash.logback.argument.StructuredArguments.kv
+
 /**
  * Finds and executes all pipeline triggers that should have run in the last configured time window during startup.
  * This job will wait until the {@link com.netflix.spinnaker.echo.pipelinetriggers.PipelineCache} has run prior to
@@ -114,6 +116,17 @@ class MissedPipelineTriggerCompensationJob implements ApplicationListener<Contex
     this.recurringPollInterval = Duration.ofMillis(recurringPollIntervalMs)
     this.pipelineFetchSize = pipelineFetchSize
     this.dateContext = dateContext ?: DateContext.fromCompensationWindow(timeZoneId, compensationWindowMs, compensationWindowToleranceMs)
+
+    if (enableRecurring && compensationWindowMs < recurringPollIntervalMs) {
+      throw new IllegalArgumentException("compensationWindowMs (${compensationWindowMs}) < recurringPollIntervalMs " +
+        "(${recurringPollIntervalMs}), which would leave a gap of ${recurringPollIntervalMs - compensationWindowMs}ms" +
+        " not covered by the compensation job")
+    }
+
+    if (enableRecurring && 2 * compensationWindowToleranceMs > recurringPollIntervalMs) {
+      throw new IllegalArgumentException("compensationWindowToleranceMs (${compensationWindowToleranceMs}) is more " +
+        "than half the recurringPollIntervalMs (${recurringPollIntervalMs}), which seems unexpected")
+    }
   }
 
   @Override
